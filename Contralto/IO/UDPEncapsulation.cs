@@ -36,10 +36,22 @@ namespace Contralto.IO
             // Try to set up UDP client.
             try
             {
-                _udpClient = new UdpClient(_udpPort, AddressFamily.InterNetwork);
+                Console.WriteLine("Setting up UDPEncapsulation");
+
+
+                _udpClient = new UdpClient(AddressFamily.InterNetwork);
                 _udpClient.EnableBroadcast = true;
                 _udpClient.Client.Blocking = true;
                 _udpClient.Client.MulticastLoopback = false;
+                Log.Write(LogComponent.EthernetPacket, "UDP send on port {0}", _udpPort + 1);
+                Console.WriteLine("UDP send on port {0}", _udpPort + 1);
+
+                _udpClientRecv = new UdpClient(_udpPort, AddressFamily.InterNetwork);
+                _udpClientRecv.Client.Blocking = true;
+                _udpClientRecv.EnableBroadcast = true;
+                _udpClientRecv.MulticastLoopback = false;
+                Log.Write(LogComponent.EthernetPacket, "UDP receive on port {0}", _udpPort);
+                Console.WriteLine("UDP receive on port {0}", _udpPort);
 
                 //
                 // Grab the broadcast address for the interface so that we know what broadcast address to use
@@ -69,7 +81,7 @@ namespace Contralto.IO
                     if (unicast.Address.AddressFamily == AddressFamily.InterNetwork)
                     {
                         _thisIPAddress = unicast.Address;
-                        _broadcastEndpoint = new IPEndPoint(GetBroadcastAddress(_thisIPAddress, unicast.IPv4Mask), _udpPort);
+                        _broadcastEndpoint = new IPEndPoint(GetBroadcastAddress(_thisIPAddress, unicast.IPv4Mask), _udpPort + 1);
                         break;
                     }
                 }
@@ -92,13 +104,14 @@ namespace Contralto.IO
                     e.Message);
 
                 _udpClient = null;
+                _udpClientRecv = null;
             }
         }        
 
         public void RegisterReceiveCallback(ReceivePacketDelegate callback)
         {   
             // UDP connection could not be configured, can't receive anything.                     
-            if (_udpClient == null)
+            if (_udpClientRecv == null)
             {
                 return;
             }
@@ -120,6 +133,10 @@ namespace Contralto.IO
             if (_udpClient != null)
             {
                 _udpClient.Close();
+            }
+            if (_udpClientRecv != null)
+            {
+                _udpClientRecv.Close();
             }
         }
 
@@ -185,14 +202,16 @@ namespace Contralto.IO
 
         private void ReceiveThread()
         {
-            Log.Write(LogComponent.HostNetworkInterface, "UDP Receiver thread started.");
+            Log.Write(LogComponent.HostNetworkInterface, "UDP Receiver thread started on {0}.", _udpPort);
             
-            IPEndPoint groupEndPoint = new IPEndPoint(IPAddress.Any, _udpPort);            
+            IPEndPoint groupEndPoint = new IPEndPoint(IPAddress.Broadcast, _udpPort);            
 
             while (true)
-            {                
-                byte[] data = _udpClient.Receive(ref groupEndPoint);
-                
+            {
+                Console.WriteLine("waiting for receive on {0}", _udpPort);
+                byte[] data = _udpClientRecv.Receive(ref groupEndPoint);
+                Console.WriteLine("Received {0} on {1}", data.Length,_udpPort);
+
                 //
                 // Sanitize the data (at least make sure the length is valid):
                 //
@@ -202,12 +221,8 @@ namespace Contralto.IO
                     continue;
                 }                
 
-                // Drop our own UDP packets.
-                if (!groupEndPoint.Address.Equals(_thisIPAddress))
-                {
-                    Log.Write(LogComponent.HostNetworkInterface, "Received UDP-encapsulated 3mbit packet.");
-                    _callback(new System.IO.MemoryStream(data));
-                }
+                Log.Write(LogComponent.HostNetworkInterface, "Received UDP-encapsulated 3mbit packet.");
+                _callback(new System.IO.MemoryStream(data));
             }
         }
 
@@ -235,6 +250,7 @@ namespace Contralto.IO
         // UDP port (TODO: make configurable?)
         private const int _udpPort = 42424;
         private UdpClient _udpClient;
+        private UdpClient _udpClientRecv;
         private IPEndPoint _broadcastEndpoint;
 
         // The IP address (unicast address) of the interface we're using to send UDP datagrams.

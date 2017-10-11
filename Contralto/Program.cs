@@ -139,6 +139,7 @@ namespace Contralto
         private static void PrintHerald()
         {
             Console.WriteLine("ContrAlto v{0} (c) 2015-2017 Living Computers: Museum+Labs.", typeof(Program).Assembly.GetName().Version);
+            Console.WriteLine("With Ken's UDP changes");
             Console.WriteLine("Bug reports to joshd@livingcomputers.org");
             Console.WriteLine();
         }      
